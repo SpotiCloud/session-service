@@ -7,16 +7,16 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 
-IConfigurationRoot Configuration = new ConfigurationBuilder()
-                .SetBasePath(AppDomain.CurrentDomain.BaseDirectory)
-                .AddJsonFile("appsettings.json")
-                .Build();
-
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+if (builder.Environment.IsDevelopment())
+{
+    builder.Configuration.AddUserSecrets<Program>();
+}
 
-builder.Services.AddControllers();
+    // Add services to the container.
+    builder.Services.AddControllers();
+builder.Configuration.AddEnvironmentVariables();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -24,7 +24,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddSingleton<IEventService, EventService>();
 builder.Services.AddHostedService<TestService>();
 
-var connectionString = Configuration.GetConnectionString("AzureStorage");
+var connectionString = builder.Configuration["AZURE_STORAGE_URL"];
 builder.Services.AddSingleton(new AzureBlobService(connectionString));
 
 var app = builder.Build();
