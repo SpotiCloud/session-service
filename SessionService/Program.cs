@@ -14,8 +14,20 @@ if (builder.Environment.IsDevelopment())
     builder.Configuration.AddUserSecrets<Program>();
 }
 
-    // Add services to the container.
-    builder.Services.AddControllers();
+/*var MyAllowSpecificOrigins = "_myAllowSpecificOrigins";
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(name: MyAllowSpecificOrigins,
+                      policy =>
+                      {
+                          policy.WithOrigins("*",
+                                              "*");
+                      });
+});*/
+
+// Add services to the container.
+builder.Services.AddControllers();
 builder.Configuration.AddEnvironmentVariables();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -25,6 +37,7 @@ builder.Services.AddSingleton<IEventService, EventService>();
 builder.Services.AddHostedService<TestService>();
 
 var connectionString = builder.Configuration["AZURE_STORAGE_URL"];
+Console.WriteLine(builder.Configuration["AZURE_STORAGE_URL"]);
 builder.Services.AddSingleton(new AzureBlobService(connectionString));
 
 var app = builder.Build();
@@ -92,6 +105,11 @@ app.Use(async (context, next) =>
     }
 });*/
 
+/*app.UseCors(builder => builder
+    .AllowAnyOrigin()
+    .AllowAnyMethod()
+    .AllowAnyHeader());*/
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -107,7 +125,7 @@ app.MapControllers();
 
 app.Use(async (context, next) =>
 {
-    context.Response.Headers.Add("Content-Security-Policy", "default-src 'self'; connect-src 'self' ws://localhost:5179");
+    context.Response.Headers.Add("Content-Security-Policy", "default-src 'self'; connect-src 'self' ws://session-service:5179");
     await next();
 });
 

@@ -12,7 +12,7 @@ namespace SessionService.Services.Event
         {
             var factory = new ConnectionFactory
             {
-                HostName = configuration.GetConnectionString("rabbitmq")
+                HostName = configuration["RABBITMQ_HOST_NAME"]
             };
 
             connection = factory.CreateConnection();
