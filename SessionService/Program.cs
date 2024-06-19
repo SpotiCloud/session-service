@@ -1,5 +1,11 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using SessionService.Data;
 using SessionService.Objects;
+using SessionService.Services.Artist;
 using SessionService.Services.AzureBlob;
 using SessionService.Services.Event;
 using SessionService.Services.Test;
@@ -14,31 +20,73 @@ if (builder.Environment.IsDevelopment())
     builder.Configuration.AddUserSecrets<Program>();
 }
 
-/*var MyAllowSpecificOrigins = "_myAllowSpecificOrigins";
-
-builder.Services.AddCors(options =>
+// Add authentication services
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
 {
-    options.AddPolicy(name: MyAllowSpecificOrigins,
-                      policy =>
-                      {
-                          policy.WithOrigins("*",
-                                              "*");
-                      });
-});*/
+
+    //authority runs behind reverse proxy
+    o.RequireHttpsMetadata = false;
+
+    o.Authority = builder.Configuration["Jwt:Authority"];
+    o.Audience = builder.Configuration["Jwt:Audience"];
+
+
+    o.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateAudience = false
+    };
+
+});
+
+// Configure DbContext with environment variables
+builder.Services.AddDbContext<DataContext>(options =>
+    options.UseNpgsql(
+        $"Host={builder.Configuration["POSTGRES_HOST_NAME"]};Port=5432;Database=artist;Username={builder.Configuration["POSTGRES_USERNAME"]};Password={builder.Configuration["POSTGRES_PASSWORD"]}"
+    )
+);
 
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Configuration.AddEnvironmentVariables();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(setup =>
+{
+    setup.SwaggerDoc("v1", new OpenApiInfo { Title = "Music API v1.0", Version = "v1" });
+    setup.AddSecurityDefinition("OAuth2", new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.OAuth2,
+        Flows = new OpenApiOAuthFlows
+        {
+            Implicit = new OpenApiOAuthFlow
+            {
+                AuthorizationUrl = new Uri("http://localhost:8180/realms/SpotiCloud/protocol/openid-connect/auth"),
+            }
+        }
+    });
+    setup.AddSecurityRequirement(new OpenApiSecurityRequirement{
+    {
+        new OpenApiSecurityScheme{
+            Reference = new OpenApiReference{
+                Type = ReferenceType.SecurityScheme,
+                Id = "OAuth2" //The name of the previously defined security scheme.
+            }
+        },
+        new string[] {}
+    }
+    });
+});
 
+string accountName = builder.Configuration["AZURE_STORAGE_ACCOUNT_NAME"];
+string accountKey = builder.Configuration["AZURE_STORAGE_ACCOUNT_KEY"];
+
+var connectionString = $"DefaultEndpointsProtocol=http;AccountName={accountName};AccountKey={accountKey};EndpointSuffix=core.windows.net";
+
+builder.Services.AddSingleton(new AzureBlobService(connectionString));
+builder.Services.AddAutoMapper(typeof(Program).Assembly);
+builder.Services.AddScoped<IArtistService, ArtistService>();
 builder.Services.AddSingleton<IEventService, EventService>();
 builder.Services.AddHostedService<TestService>();
-
-var connectionString = builder.Configuration["AZURE_STORAGE_URL"];
-Console.WriteLine(builder.Configuration["AZURE_STORAGE_URL"]);
-builder.Services.AddSingleton(new AzureBlobService(connectionString));
 
 var app = builder.Build();
 
@@ -55,7 +103,7 @@ app.UseWebSockets();
 
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path == "/ws")
+    if (context.Request.Path == "/session/ws")
     {
         if (context.WebSockets.IsWebSocketRequest)
         {
@@ -85,31 +133,6 @@ app.Use(async (context, next) =>
     }
 });
 
-/*app.Use(async (context, next) =>
-{
-    if (context.Request.Path == "/ws")
-    {
-        if (context.WebSockets.IsWebSocketRequest)
-        {
-            WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
-            await HandleWebSocketAsync(webSocket);
-        }
-        else
-        {
-            context.Response.StatusCode = 400; // Bad Request
-        }
-    }
-    else
-    {
-        await next();
-    }
-});*/
-
-/*app.UseCors(builder => builder
-    .AllowAnyOrigin()
-    .AllowAnyMethod()
-    .AllowAnyHeader());*/
-
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -119,6 +142,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
@@ -129,10 +153,12 @@ app.Use(async (context, next) =>
     await next();
 });
 
-/*app.Run(async (context) =>
+
+using (var scope = app.Services.CreateScope())
 {
-    await context.Response.WriteAsync("Hello World!");
-});*/
+    var dbContext = scope.ServiceProvider.GetRequiredService<DataContext>();
+    dbContext.Database.Migrate();
+}
 
 app.Run();
 
@@ -165,22 +191,4 @@ async Task HandleWebSocketAsync(WebSocket webSocket, string roomName)
     {
         rooms[roomName].Remove(webSocket);
     }
-
-    //await webSocket.CloseAsync(result.CloseStatus.Value, result.CloseStatusDescription, CancellationToken.None);
 }
-
-/*async Task HandleWebSocketAsync(WebSocket webSocket)
-{
-    var buffer = new byte[1024 * 4];
-    WebSocketReceiveResult result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-
-    while (!result.CloseStatus.HasValue)
-    {
-        var serverMsg = Encoding.UTF8.GetBytes($"Server: Hello! Time: {DateTime.Now}");
-        await webSocket.SendAsync(new ArraySegment<byte>(serverMsg, 0, serverMsg.Length), result.MessageType, result.EndOfMessage, CancellationToken.None);
-
-        result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-    }
-
-    await webSocket.CloseAsync(result.CloseStatus.Value, result.CloseStatusDescription, CancellationToken.None);
-}*/

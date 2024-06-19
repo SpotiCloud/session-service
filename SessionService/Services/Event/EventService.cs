@@ -12,7 +12,9 @@ namespace SessionService.Services.Event
         {
             var factory = new ConnectionFactory
             {
-                HostName = configuration["RABBITMQ_HOST_NAME"]
+                HostName = configuration["RABBITMQ_HOST_NAME"],
+                UserName = configuration["RABBITMQ_USERNAME"],
+                Password = configuration["RABBITMQ_PASSWORD"]
             };
 
             connection = factory.CreateConnection();
@@ -39,9 +41,7 @@ namespace SessionService.Services.Event
         {
             var channel = connection.CreateModel();
 
-            //check these
             channel.ExchangeDeclare(exchange: exchange, type: ExchangeType.Direct, durable: true, autoDelete: false);
-            //Check these
             channel.QueueDeclare(queue, exclusive: false, autoDelete: false);
             channel.QueueBind(exchange: exchange, routingKey: topic, queue: queue);
 

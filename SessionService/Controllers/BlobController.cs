@@ -12,7 +12,7 @@ namespace SessionService.Controllers
             _blobService = blobService;
         }
 
-        [HttpGet("download/{blobName}")]
+        [HttpGet("session/download/{blobName}")]
         public async Task<IActionResult> Download(string blobName)
         {
             var stream = await _blobService.DownloadFileAsync("songs", blobName);
